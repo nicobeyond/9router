@@ -4,8 +4,11 @@ import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 const MAX_INPUT_ID_LEN = 64;
 
 /**
- * Sanitize input array items: truncate any id field that exceeds the API max length (64 chars).
- * Mutates items in place; safe to call multiple times (idempotent).
+ * Sanitize input array items: truncate any id / call_id field that exceeds the
+ * API max length (64 chars). Both are enforced by strict upstreams (OpenAI &
+ * New API style validation); call_id is used by function_call /
+ * function_call_output items. Mutates items in place; safe to call multiple
+ * times (idempotent).
  * @param {Array} input - input array from Responses API body
  */
 export function sanitizeInputItemIds(input) {
@@ -14,6 +17,9 @@ export function sanitizeInputItemIds(input) {
     if (item && typeof item === "object" && !Array.isArray(item)) {
       if (typeof item.id === "string" && item.id.length > MAX_INPUT_ID_LEN) {
         item.id = item.id.substring(0, MAX_INPUT_ID_LEN);
+      }
+      if (typeof item.call_id === "string" && item.call_id.length > MAX_INPUT_ID_LEN) {
+        item.call_id = item.call_id.substring(0, MAX_INPUT_ID_LEN);
       }
     }
   }
