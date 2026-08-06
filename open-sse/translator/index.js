@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.js";
+import { sanitizeInputItemIds } from "./formats/responsesApi.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./concerns/toolCall.js";
 import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -52,6 +53,12 @@ function stripContentTypes(body, stripList = []) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
   ensureInitialized();
   let result = body;
+
+  // Responses API input[].id has a 64-char max. Enforce on every outbound
+  // request — this covers same-format passthrough (source==target==responses)
+  // and combo-model rotation paths that forward the raw client body untouched,
+  // where per-handler sanitizers (responsesHandler / openai-responses.js) never run.
+  if (Array.isArray(result?.input)) sanitizeInputItemIds(result.input);
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
   stripContentTypes(result, stripList);
