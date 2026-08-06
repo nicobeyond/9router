@@ -155,7 +155,11 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
-    if (this.provider === "claude" && model && !this.config.preserveClientIdentity) {
+    const preserveClientIdentity =
+      this.config?.preserveClientIdentity === true ||
+      credentials?.providerSpecificData?.preserveClientIdentity === true;
+
+    if (this.provider === "claude" && model && !preserveClientIdentity) {
       headers["Anthropic-Beta"] = selectAnthropicBeta(model);
     }
 
@@ -163,7 +167,7 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
       const isOfficialAnthropic = baseUrl === "" || baseUrl.includes("api.anthropic.com");
-      if (!isOfficialAnthropic && !this.config.preserveClientIdentity) {
+      if (!isOfficialAnthropic && !preserveClientIdentity) {
         // Some third-party Anthropic-compatible gateways require Bearer auth in
         // addition to x-api-key. Send both (x-api-key already set above) so
         // gateways that read either header succeed.
@@ -192,8 +196,8 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
-    // Selective passthrough of client identity headers (opt-in per provider)
-    if (this.config.preserveClientIdentity) {
+    // Selective passthrough of client identity headers
+    if (preserveClientIdentity) {
       mergeInboundClientIdentityHeaders(headers, credentials);
     }
 

@@ -186,6 +186,48 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
       headers["Anthropic-Version"] || headers["anthropic-version"];
     expect(hasVersion).toBeDefined();
   });
+
+  it("forwards allowlisted client identity headers when enabled on the connection", () => {
+    const executor = new DefaultExecutor("anthropic-compatible-custom");
+    const headers = executor.buildHeaders(
+      {
+        apiKey: "upstream-key",
+        providerSpecificData: {
+          baseUrl: "https://myproxy.example.com/v1",
+          preserveClientIdentity: true,
+        },
+        rawHeaders: {
+          "user-agent": "claude-code/1.0",
+          "x-app": "cli",
+          authorization: "Bearer client-secret",
+        },
+      },
+      true
+    );
+
+    expect(headers["user-agent"]).toBe("claude-code/1.0");
+    expect(headers["x-app"] || headers["X-App"]).toBeDefined();
+    // 9router's own auth header wins and the client's Authorization is never forwarded
+    expect(headers["x-api-key"]).toBe("upstream-key");
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("does not forward client identity headers when disabled on the connection", () => {
+    const executor = new DefaultExecutor("anthropic-compatible-custom");
+    const headers = executor.buildHeaders(
+      {
+        apiKey: "upstream-key",
+        providerSpecificData: {
+          baseUrl: "https://myproxy.example.com/v1",
+          preserveClientIdentity: false,
+        },
+        rawHeaders: { "user-agent": "claude-code/1.0" },
+      },
+      true
+    );
+
+    expect(headers["user-agent"]).toBeUndefined();
+  });
 });
 
 // ─── proxyFetch anthropicFetch routing ────────────────────────────────────────

@@ -73,8 +73,13 @@ export class BaseExecutor {
       headers["Accept"] = "text/event-stream";
     }
 
-    // Selective passthrough of client identity headers (opt-in per provider)
-    if (this.config?.preserveClientIdentity) {
+    // Selective passthrough of client identity headers. The connection-level
+    // setting is what the dashboard edits; provider config remains supported
+    // for backwards compatibility and defaults to disabled.
+    const preserveClientIdentity =
+      this.config?.preserveClientIdentity === true ||
+      credentials?.providerSpecificData?.preserveClientIdentity === true;
+    if (preserveClientIdentity) {
       mergeInboundClientIdentityHeaders(headers, credentials);
     }
 

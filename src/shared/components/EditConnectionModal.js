@@ -8,12 +8,14 @@ import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import Select from "@/shared/components/Select";
+import Toggle from "@/shared/components/Toggle";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
     apiKey: "",
+    preserveClientIdentity: false,
   });
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
@@ -35,6 +37,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
+        preserveClientIdentity: connection.providerSpecificData?.preserveClientIdentity === true,
       });
       // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
@@ -120,6 +123,10 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       const updates = {
         name: formData.name,
         priority: formData.priority,
+        providerSpecificData: {
+          ...(connection.providerSpecificData || {}),
+          preserveClientIdentity: formData.preserveClientIdentity,
+        },
       };
       if (!isOAuth && formData.apiKey) {
         updates.apiKey = formData.apiKey;
@@ -158,6 +165,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       // Add Azure-specific data if this is an Azure connection
       if (isAzure) {
         updates.providerSpecificData = {
+          ...updates.providerSpecificData,
           azureEndpoint: azureData.azureEndpoint,
           apiVersion: azureData.apiVersion,
           deployment: azureData.deployment,
@@ -165,11 +173,17 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         };
       }
       if (isCloudflareAi) {
-        updates.providerSpecificData = { accountId: cloudflareData.accountId };
+        updates.providerSpecificData = {
+          ...updates.providerSpecificData,
+          accountId: cloudflareData.accountId,
+        };
       }
       // Persist updated region for region-aware providers
       if (providerRegions && region) {
-        updates.providerSpecificData = buildRegionSpecificData();
+        updates.providerSpecificData = {
+          ...updates.providerSpecificData,
+          region,
+        };
       }
       
       await onSave(updates);
@@ -272,6 +286,20 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
           />
         )}
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-sidebar/30 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Preserve client identity headers</p>
+            <p className="mt-1 text-xs text-text-muted">
+              Forward Codex/Claude identity headers for upstream client verification. Authentication headers are never forwarded.
+            </p>
+          </div>
+          <Toggle
+            checked={formData.preserveClientIdentity}
+            onChange={(checked) => setFormData({ ...formData, preserveClientIdentity: checked })}
+            title={formData.preserveClientIdentity ? "Disable identity header passthrough" : "Enable identity header passthrough"}
+          />
+        </div>
 
         {!isCompatible && !isAzure && !isCloudflareAi && (
           <div className="flex items-center gap-3">

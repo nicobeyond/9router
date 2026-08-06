@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, Badge, Input, Modal, Select } from "@/shared/components";
+import { Button, Badge, Input, Modal, Select, Toggle } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { planBulkAdd } from "@/shared/utils/bulkAdd";
 
@@ -30,6 +30,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     priority: 1,
     proxyPoolId: NONE_PROXY_POOL_VALUE,
     ollamaHostUrl: "",
+    preserveClientIdentity: false,
   });
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
@@ -53,24 +54,27 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
 
   const buildProviderSpecificData = () => {
+    const data = {
+      preserveClientIdentity: formData.preserveClientIdentity,
+    };
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
-      return { baseUrl: formData.ollamaHostUrl.trim() };
+      data.baseUrl = formData.ollamaHostUrl.trim();
     }
     if (isAzure) {
-      return {
+      Object.assign(data, {
         azureEndpoint: azureData.azureEndpoint,
         apiVersion: azureData.apiVersion,
         deployment: azureData.deployment,
         organization: azureData.organization,
-      };
+      });
     }
     if (isCloudflareAi) {
-      return { accountId: cloudflareData.accountId };
+      data.accountId = cloudflareData.accountId;
     }
     if (providerRegions && region) {
-      return { region };
+      data.region = region;
     }
-    return undefined;
+    return data;
   };
 
   const handleValidate = async () => {
@@ -381,6 +385,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           ]}
           placeholder="None"
         />
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-sidebar/30 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Preserve client identity headers</p>
+            <p className="mt-1 text-xs text-text-muted">
+              Forward Codex/Claude identity headers for upstream client verification. Authentication headers are never forwarded.
+            </p>
+          </div>
+          <Toggle
+            checked={formData.preserveClientIdentity}
+            onChange={(checked) => setFormData({ ...formData, preserveClientIdentity: checked })}
+          />
+        </div>
 
         {(proxyPools || []).length === 0 && (
           <p className="text-xs text-text-muted">
