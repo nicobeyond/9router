@@ -50,6 +50,7 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  const [providerNodes, setProviderNodes] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
@@ -62,20 +63,44 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     try {
-      const [combosRes, providersRes, settingsRes] = await Promise.all([
+      const [combosRes, providersRes, settingsRes, nodesRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
         fetch("/api/settings"),
+        fetch("/api/provider-nodes"),
       ]);
       const combosData = await combosRes.json();
       const providersData = await providersRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const nodesData = nodesRes.ok ? await nodesRes.json() : {};
+      const nodes = nodesData.nodes || [];
       
       // Only LLM combos here - webSearch/webFetch combos belong to media-providers/web
-      if (combosRes.ok) setCombos((combosData.combos || []).filter(c => !c.kind || c.kind === "llm"));
-      if (providersRes.ok) {
-        setActiveProviders(providersData.connections || []);
+      if (combosRes.ok) {
+        let combos = (combosData.combos || []).filter(c => !c.kind || c.kind === "llm");
+        // Drop combo models whose custom provider connection was deleted or disabled.
+        const activeConnections = providersRes.ok ? (providersData.connections || []) : [];
+        setActiveProviders(activeConnections);
+        const activeProviderIds = new Set(
+          activeConnections.filter(c => c.isActive !== false).map(c => c.provider)
+        );
+        const stalePrefixes = new Set();
+        for (const node of nodes) {
+          if (node?.id && !activeProviderIds.has(node.id)) {
+            stalePrefixes.add(node.prefix);
+            stalePrefixes.add(node.id);
+          }
+        }
+        combos = combos.map(c => ({
+          ...c,
+          models: (c.models || []).filter((m) => {
+            if (typeof m !== "string" || !m.includes("/")) return true;
+            return !stalePrefixes.has(m.split("/")[0]);
+          }),
+        }));
+        setCombos(combos);
       }
+      setProviderNodes(nodes);
       setComboStrategies(settingsData.comboStrategies || {});
       const rawAdapter = settingsData.capacityAdapter || {};
       const normalized = {};

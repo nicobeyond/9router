@@ -5,6 +5,15 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { removeComboModelsByPrefixes } from "@/lib/db/repos/combosRepo";
+
+// Purge combo references to a connection's node (providerId + prefix) so
+// deleted/disabled custom providers no longer appear or get tried in combos.
+async function purgeComboReferences(connection) {
+  if (!connection) return;
+  const prefixes = [connection.provider, connection.providerSpecificData?.prefix];
+  await removeComboModelsByPrefixes(prefixes.filter(Boolean));
+}
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -157,6 +166,12 @@ export async function PUT(request, { params }) {
 
     const updated = await updateProviderConnection(id, updateData);
 
+    // Disabling a custom provider: drop its models from all combos so they stop
+    // appearing in the UI and during fallback rotation.
+    if (body.isActive === false && existing.isActive !== false) {
+      await purgeComboReferences(existing);
+    }
+
     // Hide sensitive fields
     const result = { ...updated };
     delete result.apiKey;
@@ -180,6 +195,9 @@ export async function DELETE(request, { params }) {
     if (!deleted) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
+
+    // Delete connection: also purge its models from all combos.
+    await purgeComboReferences(existing);
 
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {

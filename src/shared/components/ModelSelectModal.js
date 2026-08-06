@@ -50,6 +50,7 @@ export default function ModelSelectModal({
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [cursorModels, setCursorModels] = useState([]);
+  const [compatibleModelMap, setCompatibleModelMap] = useState({});
 
   // Cursor exposes the usable catalog per account. Keep the static catalog only
   // as a fallback, since it quickly becomes stale and different accounts can
@@ -91,6 +92,41 @@ export default function ModelSelectModal({
 
     return () => { cancelled = true; };
   }, [isOpen, cursorConnectionIds]);
+
+  // OpenAI/Anthropic-compatible connections: fetch the live model catalog from
+  // each upstream (GET {baseUrl}/models) so recently added models show up,
+  // instead of only stale aliases/custom entries. Keyed by providerId; a
+  // provider with multiple connections merges all catalogs.
+  const compatibleConnectionIds = useMemo(
+    () => activeProviders
+      .filter((p) => (isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider)) && p.id)
+      .map((p) => ({ providerId: p.provider, connectionId: p.id })),
+    [activeProviders],
+  );
+
+  useEffect(() => {
+    if (!isOpen || compatibleConnectionIds.length === 0) {
+      setCompatibleModelMap({});
+      return undefined;
+    }
+    let cancelled = false;
+    const results = {};
+    Promise.all(compatibleConnectionIds.map(async ({ providerId, connectionId }) => {
+      try {
+        const response = await fetch(`/api/providers/${connectionId}/models`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        const models = Array.isArray(data.models) ? data.models : [];
+        const prev = results[providerId] || [];
+        results[providerId] = [...prev, ...models];
+      } catch {
+        // Keep existing aliases/custom models; live fetch is best-effort.
+      }
+    }))
+      .then(() => { if (!cancelled) setCompatibleModelMap(results); })
+      .catch(() => { if (!cancelled) setCompatibleModelMap({}); });
+    return () => { cancelled = true; };
+  }, [isOpen, compatibleConnectionIds]);
 
   const fetchCombos = async () => {
     try {
@@ -305,6 +341,25 @@ export default function ModelSelectModal({
         const seen = new Set(nodeModels.map((m) => m.value));
         const mergedModels = [...nodeModels, ...registeredCustom.filter((m) => !seen.has(m.value))];
 
+        // Live catalog from the upstream /models endpoint (best-effort; merged
+        // only for LLM selection so freshly added upstream models are visible).
+        if (!kindFilter) {
+          const seenLive = new Set(mergedModels.map((m) => m.value));
+          const liveModels = (compatibleModelMap[providerId] || [])
+            .map((m) => {
+              const id = m?.id || m?.name;
+              if (!id) return null;
+              return { id, name: m?.name || id, value: `${nodePrefix}/${id}`, isLive: true };
+            })
+            .filter(Boolean);
+          for (const lm of liveModels) {
+            if (!seenLive.has(lm.value)) {
+              mergedModels.push(lm);
+              seenLive.add(lm.value);
+            }
+          }
+        }
+
         // Always show compatible providers that are connected, even with no aliases.
         // When no aliases exist, show a placeholder so users know it's available.
         const modelsToShow = mergedModels.length > 0 ? mergedModels : [{
@@ -394,7 +449,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, compatibleModelMap]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

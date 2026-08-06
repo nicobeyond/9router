@@ -71,3 +71,38 @@ export async function deleteCombo(id) {
   const res = db.run(`DELETE FROM combos WHERE id = ?`, [id]);
   return (res?.changes ?? 0) > 0;
 }
+
+/**
+ * Remove models belonging to the given prefixes/providerIds from ALL combos.
+ * Called when a custom provider connection is deleted or disabled so combos
+ * stop referencing it (and stop trying it during fallback rotation).
+ * A combo model is either "<prefix>/<model>" or "<providerId>/<model>"; both
+ * share the same leading token, which is matched against `prefixes`.
+ * @param {string[]} prefixes - node prefixes and/or raw providerIds to purge
+ * @returns {number} number of combos modified
+ */
+export async function removeComboModelsByPrefixes(prefixes) {
+  const set = new Set((prefixes || []).filter((p) => typeof p === "string" && p.length > 0));
+  if (set.size === 0) return 0;
+  const db = await getAdapter();
+  let affected = 0;
+  db.transaction(() => {
+    const rows = db.all(`SELECT * FROM combos`);
+    for (const row of rows) {
+      const combo = rowToCombo(row);
+      const before = combo.models.length;
+      combo.models = combo.models.filter((m) => {
+        if (typeof m !== "string") return true;
+        return !set.has(m.split("/")[0]);
+      });
+      if (combo.models.length !== before) {
+        db.run(
+          `UPDATE combos SET models = ?, updatedAt = ? WHERE id = ?`,
+          [stringifyJson(combo.models), new Date().toISOString(), combo.id]
+        );
+        affected++;
+      }
+    }
+  });
+  return affected;
+}
