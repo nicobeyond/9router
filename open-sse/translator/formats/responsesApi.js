@@ -1,5 +1,24 @@
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
+// Responses API enforces max 64 chars on input item id fields (#393, #input-id-too-long)
+const MAX_INPUT_ID_LEN = 64;
+
+/**
+ * Sanitize input array items: truncate any id field that exceeds the API max length (64 chars).
+ * Mutates items in place; safe to call multiple times (idempotent).
+ * @param {Array} input - input array from Responses API body
+ */
+export function sanitizeInputItemIds(input) {
+  if (!Array.isArray(input)) return;
+  for (const item of input) {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      if (typeof item.id === "string" && item.id.length > MAX_INPUT_ID_LEN) {
+        item.id = item.id.substring(0, MAX_INPUT_ID_LEN);
+      }
+    }
+  }
+}
+
 /**
  * Normalize Responses API input to array format.
  * Accepts string or array, returns array of message items.
@@ -18,6 +37,8 @@ export function normalizeResponsesInput(input) {
     if (input.length === 0) {
       return [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
     }
+    // Truncate any input item id that exceeds API max length (64 chars)
+    sanitizeInputItemIds(input);
     return input;
   }
   return null;

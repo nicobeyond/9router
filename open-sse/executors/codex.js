@@ -55,14 +55,19 @@ function convertSystemToDeveloperRole(body) {
   }
 }
 
-// Strip server-generated item IDs (rs_/fc_/resp_/msg_) from input — avoids 404 with store=false
+// Strip server-generated item IDs (rs_/fc_/resp_/msg_) from input — avoids 404 with store=false.
+// Also truncate any item id that exceeds the Responses API max length (64 chars).
+const MAX_INPUT_ID_LEN = 64;
 function stripStoredItemReferences(body) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
     if (typeof item === "string" && SERVER_ID_PATTERN.test(item)) return false;
     if (item && typeof item === "object" && !Array.isArray(item)) {
       if (item.type === "item_reference") return false;
-      if (typeof item.id === "string" && SERVER_ID_PATTERN.test(item.id)) delete item.id;
+      if (typeof item.id === "string") {
+        if (SERVER_ID_PATTERN.test(item.id)) { delete item.id; }
+        else if (item.id.length > MAX_INPUT_ID_LEN) { item.id = item.id.substring(0, MAX_INPUT_ID_LEN); }
+      }
     }
     return true;
   });
