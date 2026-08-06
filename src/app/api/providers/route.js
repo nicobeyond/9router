@@ -133,7 +133,10 @@ export async function POST(request) {
       if (!node) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
+      // Merge node-derived fields into the incoming providerSpecificData rather
+      // than overwriting it, so client-set flags like preserveClientIdentity survive.
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         apiType: node.apiType,
         baseUrl: node.baseUrl,
@@ -145,6 +148,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         baseUrl: node.baseUrl,
         nodeName: node.name,
@@ -155,6 +159,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
       }
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         baseUrl: node.baseUrl,
         nodeName: node.name,
