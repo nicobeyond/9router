@@ -3,10 +3,17 @@ import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 // Responses API enforces max 64 chars on input item id fields (#393, #input-id-too-long)
 const MAX_INPUT_ID_LEN = 64;
 
+// Server-generated prefixes (OpenAI Responses API responses use these).
+// Forwarding them back to strict upstreams (New-API-style) causes rejection
+// with "invalid_id" because they're treated as forged client-supplied ids.
+// Strip them; the upstream will mint fresh ids for the new request.
+const SERVER_ID_PREFIX_PATTERN = /^(rs|fc|resp|msg)_/;
+
 /**
- * Sanitize input array items: truncate any id / call_id field that exceeds the
- * API max length (64 chars). Both are enforced by strict upstreams (OpenAI &
- * New API style validation); call_id is used by function_call /
+ * Sanitize input array items: strip server-generated ids and truncate any
+ * overlong id / call_id (64-char max). Strict upstreams (New-API-style)
+ * enforce both: server ids must not be echoed back, and length/character
+ * rules apply to anything that remains. call_id is used by function_call /
  * function_call_output items. Mutates items in place; safe to call multiple
  * times (idempotent).
  * @param {Array} input - input array from Responses API body
@@ -15,8 +22,13 @@ export function sanitizeInputItemIds(input) {
   if (!Array.isArray(input)) return;
   for (const item of input) {
     if (item && typeof item === "object" && !Array.isArray(item)) {
-      if (typeof item.id === "string" && item.id.length > MAX_INPUT_ID_LEN) {
-        item.id = item.id.substring(0, MAX_INPUT_ID_LEN);
+      if (typeof item.id === "string") {
+        if (SERVER_ID_PREFIX_PATTERN.test(item.id)) {
+          // Server-generated id — drop it entirely to avoid upstream rejection.
+          delete item.id;
+        } else if (item.id.length > MAX_INPUT_ID_LEN) {
+          item.id = item.id.substring(0, MAX_INPUT_ID_LEN);
+        }
       }
       if (typeof item.call_id === "string" && item.call_id.length > MAX_INPUT_ID_LEN) {
         item.call_id = item.call_id.substring(0, MAX_INPUT_ID_LEN);
